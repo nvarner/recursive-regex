@@ -93,7 +93,35 @@
 //! ]
 //! ```
 
+use regex::{Captures, Regex};
+
+pub fn recursive_regex<'r, 't: 'r>(
+    text: &'t str,
+    regex: &'r Regex,
+) -> impl Iterator<Item = Captures<'t>> + 'r {
+    regex.captures_iter(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn non_recursive() {
+        let text = "Hello, world! Goodbye, universe!";
+        let regex = Regex::new("([A-Z][a-z]+), (.*?)!").unwrap();
+        let results: Vec<Vec<_>> = recursive_regex(text, &regex)
+            .map(|captures| {
+                captures
+                    .iter()
+                    .skip(1) // capture group 0 is the entire string
+                    .map(|group| group.map(|inner| inner.as_str()).unwrap_or(""))
+                    .collect()
+            })
+            .collect();
+        assert_eq!(
+            vec![vec!["Hello", "world"], vec!["Goodbye", "universe"]],
+            results
+        );
+    }
 }
