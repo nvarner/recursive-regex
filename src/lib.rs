@@ -93,13 +93,31 @@
 //! ]
 //! ```
 
+use std::collections::HashMap;
+
 use regex::{Captures, Regex};
 
-pub fn recursive_regex<'r, 't: 'r>(
-    text: &'t str,
-    regex: &'r Regex,
-) -> impl Iterator<Item = Captures<'t>> + 'r {
-    regex.captures_iter(text)
+pub struct RegexTree {
+    regex: Regex,
+    capture_group_indices: HashMap<usize, Box<RegexTree>>,
+    capture_group_names: HashMap<String, Box<RegexTree>>,
+}
+
+impl RegexTree {
+    pub fn leaf(regex: Regex) -> Self {
+        Self {
+            regex,
+            capture_group_indices: HashMap::new(),
+            capture_group_names: HashMap::new(),
+        }
+    }
+
+    pub fn captures<'r, 't: 'r>(
+        &'r self,
+        text: &'t str,
+    ) -> impl Iterator<Item = Captures<'t>> + 'r {
+        self.regex.captures_iter(text)
+    }
 }
 
 #[cfg(test)]
@@ -110,7 +128,9 @@ mod tests {
     fn non_recursive() {
         let text = "Hello, world! Goodbye, universe!";
         let regex = Regex::new("([A-Z][a-z]+), (.*?)!").unwrap();
-        let results: Vec<Vec<_>> = recursive_regex(text, &regex)
+        let regex_tree = RegexTree::leaf(regex);
+        let results: Vec<Vec<_>> = regex_tree
+            .captures(text)
             .map(|captures| {
                 captures
                     .iter()
