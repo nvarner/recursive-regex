@@ -95,28 +95,76 @@
 
 use std::collections::HashMap;
 
-use regex::{Captures, Regex};
+use regex::{Captures, Match, Regex};
 
-pub struct RegexTree {
-    regex: Regex,
-    capture_group_indices: HashMap<usize, Box<RegexTree>>,
-    capture_group_names: HashMap<String, Box<RegexTree>>,
+pub mod owning_regex_iters;
+
+#[derive(Debug, Clone)]
+pub enum ExpandableMatch<'a> {
+    SingleMatch(Match<'a>),
+    ExpandedMatch(Vec<HashMap<String, ExpandableMatch<'a>>>),
 }
 
-impl RegexTree {
-    pub fn leaf(regex: Regex) -> Self {
-        Self {
-            regex,
-            capture_group_indices: HashMap::new(),
-            capture_group_names: HashMap::new(),
+enum InnerIter<'a> {
+    SingleMatch { visited: bool, re_match: Match<'a> },
+    ExpandedMatch { inner: ExpandedMatchIter<'a> },
+}
+
+type ExpandedCapturesIter<'a> =
+    Box<dyn Iterator<Item = (usize, Option<ExpandableMatchIter<'a>>)> + 'a>;
+type ExpandedMatchIter<'a> = Box<dyn Iterator<Item = ExpandedCapturesIter<'a>> + 'a>;
+
+impl<'a> InnerIter<'a> {
+    pub fn single_match(re_match: Match<'a>) -> Self {
+        Self::SingleMatch {
+            visited: false,
+            re_match,
         }
     }
 
-    pub fn captures<'r, 't: 'r>(
+    pub fn expanded_match(iter: ExpandedMatchIter<'a>) -> Self {
+        Self::ExpandedMatch { inner: iter }
+    }
+}
+
+pub struct ExpandableMatchIter<'a>(InnerIter<'a>);
+
+#[derive(Debug, Clone)]
+pub struct RecursiveRegex {
+    regex: Regex,
+    tree: HashMap<usize, RecursiveRegex>,
+}
+
+impl RecursiveRegex {
+    pub fn new(regex: Regex, tree: HashMap<usize, RecursiveRegex>) -> Self {
+        Self { regex, tree }
+    }
+
+    pub fn captures<'r, 't: 'r>(&'r self, text: &'t str) -> ExpandableMatchIter<'r> {
+        let iter = self
+            .regex
+            .captures_iter(text)
+            .map(|captures| self.map_captures(&captures));
+        ExpandableMatchIter(InnerIter::expanded_match(Box::new(iter)))
+    }
+
+    fn map_captures<'t>(&self, captures: &'t Captures<'t>) -> ExpandedCapturesIter<'t> {
+        let iter = captures
+            .iter()
+            .enumerate()
+            .map(|(i, re_match)| (i, re_match.map(|re_match| self.map_match(i, re_match))));
+        Box::new(iter)
+    }
+
+    fn map_match<'r, 't: 'r>(
         &'r self,
-        text: &'t str,
-    ) -> impl Iterator<Item = Captures<'t>> + 'r {
-        self.regex.captures_iter(text)
+        index: usize,
+        re_match: Match<'t>,
+    ) -> ExpandableMatchIter<'r> {
+        match self.tree.get(&index) {
+            Some(regex) => regex.captures(re_match.as_str()),
+            None => ExpandableMatchIter(InnerIter::single_match(re_match)),
+        }
     }
 }
 
@@ -128,20 +176,16 @@ mod tests {
     fn non_recursive() {
         let text = "Hello, world! Goodbye, universe!";
         let regex = Regex::new("([A-Z][a-z]+), (.*?)!").unwrap();
-        let regex_tree = RegexTree::leaf(regex);
-        let results: Vec<Vec<_>> = regex_tree
-            .captures(text)
-            .map(|captures| {
-                captures
-                    .iter()
-                    .skip(1) // capture group 0 is the entire string
-                    .map(|group| group.map(|inner| inner.as_str()).unwrap_or(""))
-                    .collect()
-            })
-            .collect();
-        assert_eq!(
-            vec![vec!["Hello", "world"], vec!["Goodbye", "universe"]],
-            results
-        );
+        let mut map = HashMap::new();
+        map.insert("regex".to_owned(), regex);
+        let recursive_regex = RecursiveRegex::new("regex", map);
+        let results = recursive_regex.captures(text);
+        panic!("{results:?}");
+    }
+
+    fn test() {
+        let regex = RecursiveRegex::builder("(.*)'s favorite numbers? (?:is|are) (.*)")
+            .recurse_into(2, RecursiveRegex::whole_match("\\d+"))
+            .build();
     }
 }
