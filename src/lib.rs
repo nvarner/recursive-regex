@@ -94,98 +94,132 @@
 //! ```
 
 use std::collections::HashMap;
+use std::iter::Zip;
 
-use regex::{Captures, Match, Regex};
+use regex::{CaptureNames, Captures, Match, Regex, SubCaptureMatches};
+use serde::de::value::{BorrowedStrDeserializer, Error};
+use serde::de::{self, MapAccess};
 
-pub mod owning_regex_iters;
-
-#[derive(Debug, Clone)]
-pub enum ExpandableMatch<'a> {
-    SingleMatch(Match<'a>),
-    ExpandedMatch(Vec<HashMap<String, ExpandableMatch<'a>>>),
-}
-
-enum InnerIter<'a> {
-    SingleMatch { visited: bool, re_match: Match<'a> },
-    ExpandedMatch { inner: ExpandedMatchIter<'a> },
-}
-
-type ExpandedCapturesIter<'a> =
-    Box<dyn Iterator<Item = (usize, Option<ExpandableMatchIter<'a>>)> + 'a>;
-type ExpandedMatchIter<'a> = Box<dyn Iterator<Item = ExpandedCapturesIter<'a>> + 'a>;
-
-impl<'a> InnerIter<'a> {
-    pub fn single_match(re_match: Match<'a>) -> Self {
-        Self::SingleMatch {
-            visited: false,
-            re_match,
-        }
-    }
-
-    pub fn expanded_match(iter: ExpandedMatchIter<'a>) -> Self {
-        Self::ExpandedMatch { inner: iter }
-    }
-}
-
-pub struct ExpandableMatchIter<'a>(InnerIter<'a>);
-
-#[derive(Debug, Clone)]
-pub struct RecursiveRegex {
+pub struct RegexTree {
     regex: Regex,
-    tree: HashMap<usize, RecursiveRegex>,
+    children: HashMap<String, RegexTree>,
 }
 
-impl RecursiveRegex {
-    pub fn new(regex: Regex, tree: HashMap<usize, RecursiveRegex>) -> Self {
-        Self { regex, tree }
+impl RegexTree {
+    pub fn captures<'t>(&self, text: &'t str) -> Option<Captures<'t>> {
+        self.regex.captures(text)
     }
 
-    pub fn captures<'r, 't: 'r>(&'r self, text: &'t str) -> ExpandableMatchIter<'r> {
-        let iter = self
-            .regex
-            .captures_iter(text)
-            .map(|captures| self.map_captures(&captures));
-        ExpandableMatchIter(InnerIter::expanded_match(Box::new(iter)))
+    pub fn names(&self) -> CaptureNames {
+        self.regex.capture_names()
     }
 
-    fn map_captures<'t>(&self, captures: &'t Captures<'t>) -> ExpandedCapturesIter<'t> {
-        let iter = captures
-            .iter()
-            .enumerate()
-            .map(|(i, re_match)| (i, re_match.map(|re_match| self.map_match(i, re_match))));
-        Box::new(iter)
+    pub fn child(&self, name: &str) -> Option<&RegexTree> {
+        self.children.get(name)
+    }
+}
+
+pub struct Deserializer<'a> {
+    regex_tree: &'a RegexTree,
+    text: &'a str,
+}
+
+impl<'a> Deserializer<'a> {
+    pub fn from_regex_tree_and_str(regex_tree: &'a RegexTree, text: &'a str) -> Self {
+        Self { regex_tree, text }
+    }
+}
+
+impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'a> {
+    type Error = Error;
+
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        // Deserialize from a single capture
+        let names = self.regex_tree.names();
+        let captures = self.regex_tree.captures(self.text).unwrap();
+        let named_captures = names.zip(captures.iter());
+        let deserializer = CapturesMapDeserializer::new(self.regex_tree, named_captures);
+        visitor.visit_map(deserializer)
     }
 
-    fn map_match<'r, 't: 'r>(
-        &'r self,
-        index: usize,
-        re_match: Match<'t>,
-    ) -> ExpandableMatchIter<'r> {
-        match self.tree.get(&index) {
-            Some(regex) => regex.captures(re_match.as_str()),
-            None => ExpandableMatchIter(InnerIter::single_match(re_match)),
+    fn deserialize_struct<V>(
+        self,
+        name: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_map(visitor)
+    }
+}
+
+struct CapturesMapDeserializer<'r, 'c, 't> {
+    regex_tree: &'r RegexTree,
+    named_captures: Zip<CaptureNames<'r>, SubCaptureMatches<'c, 't>>,
+    /// Stores the last returned key with its associated value
+    last_key_value: Option<(&'r str, Match<'t>)>,
+}
+
+impl<'r, 'c, 't> CapturesMapDeserializer<'r, 'c, 't> {
+    pub fn new(
+        regex_tree: &'r RegexTree,
+        named_captures: Zip<CaptureNames<'r>, SubCaptureMatches<'c, 't>>,
+    ) -> Self {
+        Self {
+            regex_tree,
+            named_captures,
+            last_key_value: None,
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn non_recursive() {
-        let text = "Hello, world! Goodbye, universe!";
-        let regex = Regex::new("([A-Z][a-z]+), (.*?)!").unwrap();
-        let mut map = HashMap::new();
-        map.insert("regex".to_owned(), regex);
-        let recursive_regex = RecursiveRegex::new("regex", map);
-        let results = recursive_regex.captures(text);
-        panic!("{results:?}");
+    fn last(&mut self) -> Option<(&'r str, Match<'t>)> {
+        self.last_key_value.take()
     }
 
-    fn test() {
-        let regex = RecursiveRegex::builder("(.*)'s favorite numbers? (?:is|are) (.*)")
-            .recurse_into(2, RecursiveRegex::whole_match("\\d+"))
-            .build();
+    fn next_key(&mut self) -> Option<&'r str> {
+        self.next().map(|(key, _value)| key)
+    }
+
+    fn next(&mut self) -> Option<(&'r str, Match<'t>)> {
+        let next = self
+            .named_captures
+            .find_map(|(name, re_match)| name.zip(re_match));
+        self.last_key_value = next;
+        next
+    }
+}
+
+impl<'de, 'r, 'c, 't> MapAccess<'de> for CapturesMapDeserializer<'r, 'c, 't> {
+    type Error = Error;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
+    where
+        K: de::DeserializeSeed<'de>,
+    {
+        self.next_key()
+            .map(BorrowedStrDeserializer::new)
+            .map(|deserializer| seed.deserialize(deserializer))
+            .transpose()
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        let (key, value) = self
+            .last()
+            .expect("invalid calling order; cannot get next value if there was no next key");
+        match self.regex_tree.child(key) {
+            Some(regex_tree) => seed.deserialize(&mut Deserializer::from_regex_tree_and_str(
+                regex_tree,
+                value.as_str(),
+            )),
+            None => seed.deserialize(BorrowedStrDeserializer::new(value.as_str())),
+        }
     }
 }
