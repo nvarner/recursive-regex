@@ -139,7 +139,10 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'a> {
     {
         // Deserialize from a single capture
         let names = self.regex_tree.names();
-        let captures = self.regex_tree.captures(self.text).unwrap();
+        let captures = self
+            .regex_tree
+            .captures(self.text)
+            .ok_or_else(|| <Error as de::Error>::custom("regular expression does not match"))?;
         let named_captures = names.zip(captures.iter());
         let deserializer = CapturesMapDeserializer::new(self.regex_tree, named_captures);
         visitor.visit_map(deserializer)
