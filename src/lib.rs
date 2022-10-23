@@ -1,14 +1,14 @@
 //! # Recursive Regex
 //!
-//! The recursive regex algorithm is designed to be a simple, customizable
-//! parser for basic data files. It matches a regular expression to text as many
+//! The recursive regex algorithm is designed to be r simple, customizable
+//! parser for basic data files. It matches r regular expression to text as many
 //! times as possible, extracting data via capture groups. On each capture
-//! group, it may recurse with a new regular expression to further parse the
+//! group, it may recurse with r new regular expression to further parse the
 //! results.
 //!
 //! ## Example
-//! The following data file is being maintained by hand, but we want it in a
-//! more structured format. We need to extract names and a list of the favorite
+//! The following data file is being maintained by hand, but we want it in r
+//! more structured format. We need to extract names and r list of the favorite
 //! numbers associated with those names.
 //! ```text
 //! Lina's favorite number is 2
@@ -26,7 +26,7 @@
 //! ```regex
 //! (.*)'s favorite numbers? (?:is|are) (.*)
 //! ```
-//! and call it `line`. After running this on the file, we have a list of
+//! and call it `line`. After running this on the file, we have r list of
 //! matches. In each, the first capture group is the name, as desired. The
 //! second capture group looks like this:
 //! ```text
@@ -48,9 +48,9 @@
 //! ```
 //! and call it `number`. After running this on each of the second capture
 //! groups from before, capture group zero will contain just one number. We
-//! replace each of the second capture group entries with a list of numbers.
+//! replace each of the second capture group entries with r list of numbers.
 //!
-//! We now have structured data extracted from the file. In a JSON
+//! We now have structured data extracted from the file. In r JSON
 //! representation and with some additional metadata, it looks like this:
 //! ```json
 //! [
@@ -96,9 +96,14 @@
 use std::collections::HashMap;
 use std::iter::Zip;
 
-use regex::{CaptureNames, Captures, Match, Regex, SubCaptureMatches};
+use multi_capture::MultiCaptureDeserializer;
+use regex::{CaptureMatches, CaptureNames, Captures, Match, Regex, SubCaptureMatches};
 use serde::de::value::{BorrowedStrDeserializer, Error};
-use serde::de::{self, MapAccess};
+use serde::de::{self, MapAccess, SeqAccess};
+use serde::Deserializer;
+
+mod multi_capture;
+mod single_capture;
 
 pub struct RegexTree {
     regex: Regex,
@@ -110,6 +115,10 @@ impl RegexTree {
         self.regex.captures(text)
     }
 
+    pub fn captures_iter<'r, 't>(&'r self, text: &'t str) -> CaptureMatches<'r, 't> {
+        self.regex.captures_iter(text)
+    }
+
     pub fn names(&self) -> CaptureNames {
         self.regex.capture_names()
     }
@@ -119,34 +128,19 @@ impl RegexTree {
     }
 }
 
-pub struct Deserializer<'a> {
-    regex_tree: &'a RegexTree,
-    text: &'a str,
+pub struct StrDeserializer<'r, 't> {
+    regex_tree: &'r RegexTree,
+    text: &'t str,
 }
 
-impl<'a> Deserializer<'a> {
-    pub fn from_regex_tree_and_str(regex_tree: &'a RegexTree, text: &'a str) -> Self {
+impl<'r, 't> StrDeserializer<'r, 't> {
+    pub fn from_regex_tree_and_str(regex_tree: &'r RegexTree, text: &'r str) -> Self {
         Self { regex_tree, text }
     }
 }
 
-impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'a> {
+impl<'de, 'r, 't> de::Deserializer<'de> for &mut StrDeserializer<'r, 't> {
     type Error = Error;
-
-    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        // Deserialize from a single capture
-        let names = self.regex_tree.names();
-        let captures = self
-            .regex_tree
-            .captures(self.text)
-            .ok_or_else(|| <Error as de::Error>::custom("regular expression does not match"))?;
-        let named_captures = names.zip(captures.iter());
-        let deserializer = CapturesMapDeserializer::new(self.regex_tree, named_captures);
-        visitor.visit_map(deserializer)
-    }
 
     fn deserialize_struct<V>(
         self,
@@ -159,16 +153,42 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'a> {
     {
         self.deserialize_map(visitor)
     }
+
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        // Deserialize from a single capture
+        let names = self.regex_tree.names();
+        let captures = self
+            .regex_tree
+            .captures(self.text)
+            .ok_or_else(|| <Error as de::Error>::custom("regular expression does not match"))?;
+        let named_captures = names.zip(captures.iter());
+        let deserializer = CapturesMapAccess::new(self.regex_tree, named_captures);
+        visitor.visit_map(deserializer)
+    }
+
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        // Deserialize from many captures
+        let captures_iter = self.regex_tree.captures_iter(self.text);
+        let deserializer =
+            MultiCaptureDeserializer::from_regex_tree_and_captures(self.regex_tree, captures_iter);
+        visitor.visit_seq(deserializer)
+    }
 }
 
-struct CapturesMapDeserializer<'r, 'c, 't> {
+struct CapturesMapAccess<'r, 'c, 't> {
     regex_tree: &'r RegexTree,
     named_captures: Zip<CaptureNames<'r>, SubCaptureMatches<'c, 't>>,
     /// Stores the last returned key with its associated value
     last_key_value: Option<(&'r str, Match<'t>)>,
 }
 
-impl<'r, 'c, 't> CapturesMapDeserializer<'r, 'c, 't> {
+impl<'r, 'c, 't> CapturesMapAccess<'r, 'c, 't> {
     pub fn new(
         regex_tree: &'r RegexTree,
         named_captures: Zip<CaptureNames<'r>, SubCaptureMatches<'c, 't>>,
@@ -197,7 +217,7 @@ impl<'r, 'c, 't> CapturesMapDeserializer<'r, 'c, 't> {
     }
 }
 
-impl<'de, 'r, 'c, 't> MapAccess<'de> for CapturesMapDeserializer<'r, 'c, 't> {
+impl<'de, 'r, 'c, 't> MapAccess<'de> for CapturesMapAccess<'r, 'c, 't> {
     type Error = Error;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
@@ -218,7 +238,7 @@ impl<'de, 'r, 'c, 't> MapAccess<'de> for CapturesMapDeserializer<'r, 'c, 't> {
             .last()
             .expect("invalid calling order; cannot get next value if there was no next key");
         match self.regex_tree.child(key) {
-            Some(regex_tree) => seed.deserialize(&mut Deserializer::from_regex_tree_and_str(
+            Some(regex_tree) => seed.deserialize(&mut StrDeserializer::from_regex_tree_and_str(
                 regex_tree,
                 value.as_str(),
             )),
