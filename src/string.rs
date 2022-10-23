@@ -16,7 +16,7 @@ impl<'r, 't> StrDeserializer<'r, 't> {
     }
 }
 
-impl<'de, 'r, 't> de::Deserializer<'de> for &mut StrDeserializer<'r, 't> {
+impl<'de, 'r, 't> de::Deserializer<'de> for StrDeserializer<'r, 't> {
     type Error = Error;
 
     fn deserialize_struct<V>(
