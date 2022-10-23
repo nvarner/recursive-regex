@@ -2,7 +2,8 @@ use serde::de;
 use serde::de::value::Error;
 
 use crate::multi_capture::MultiCaptureDeserializer;
-use crate::{CapturesMapAccess, RegexTree};
+use crate::single_capture::SingleCaptureMapAccess;
+use crate::RegexTree;
 
 pub struct StrDeserializer<'r, 't> {
     regex_tree: &'r RegexTree,
@@ -40,8 +41,8 @@ impl<'de, 'r, 't> de::Deserializer<'de> for &mut StrDeserializer<'r, 't> {
             .regex_tree
             .captures(self.text)
             .ok_or_else(|| <Error as de::Error>::custom("regular expression does not match"))?;
-        let named_captures = names.zip(captures.iter());
-        let deserializer = CapturesMapAccess::new(self.regex_tree, named_captures);
+        let deserializer =
+            SingleCaptureMapAccess::from_regex_tree_and_captures(self.regex_tree, captures.iter());
         visitor.visit_map(deserializer)
     }
 

@@ -94,13 +94,8 @@
 //! ```
 
 use std::collections::HashMap;
-use std::iter::Zip;
 
-use regex::{CaptureMatches, CaptureNames, Captures, Match, Regex, SubCaptureMatches};
-use serde::de;
-use serde::de::value::{BorrowedStrDeserializer, Error};
-use serde::de::MapAccess;
-use string::StrDeserializer;
+use regex::{CaptureMatches, CaptureNames, Captures, Regex};
 
 mod multi_capture;
 mod single_capture;
@@ -126,71 +121,5 @@ impl RegexTree {
 
     pub fn child(&self, name: &str) -> Option<&RegexTree> {
         self.children.get(name)
-    }
-}
-
-struct CapturesMapAccess<'r, 'c, 't> {
-    regex_tree: &'r RegexTree,
-    named_captures: Zip<CaptureNames<'r>, SubCaptureMatches<'c, 't>>,
-    /// Stores the last returned key with its associated value
-    last_key_value: Option<(&'r str, Match<'t>)>,
-}
-
-impl<'r, 'c, 't> CapturesMapAccess<'r, 'c, 't> {
-    pub fn new(
-        regex_tree: &'r RegexTree,
-        named_captures: Zip<CaptureNames<'r>, SubCaptureMatches<'c, 't>>,
-    ) -> Self {
-        Self {
-            regex_tree,
-            named_captures,
-            last_key_value: None,
-        }
-    }
-
-    fn last(&mut self) -> Option<(&'r str, Match<'t>)> {
-        self.last_key_value.take()
-    }
-
-    fn next_key(&mut self) -> Option<&'r str> {
-        self.next().map(|(key, _value)| key)
-    }
-
-    fn next(&mut self) -> Option<(&'r str, Match<'t>)> {
-        let next = self
-            .named_captures
-            .find_map(|(name, re_match)| name.zip(re_match));
-        self.last_key_value = next;
-        next
-    }
-}
-
-impl<'de, 'r, 'c, 't> MapAccess<'de> for CapturesMapAccess<'r, 'c, 't> {
-    type Error = Error;
-
-    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
-    where
-        K: de::DeserializeSeed<'de>,
-    {
-        self.next_key()
-            .map(BorrowedStrDeserializer::new)
-            .map(|deserializer| seed.deserialize(deserializer))
-            .transpose()
-    }
-
-    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::DeserializeSeed<'de>,
-    {
-        let (key, value) = self
-            .last()
-            .expect("invalid calling order; cannot get next value if there was no next key");
-        match self.regex_tree.child(key) {
-            Some(regex_tree) => seed.deserialize(&mut StrDeserializer::from_regex_tree_and_str(
-                regex_tree,
-                value.as_str(),
-            )),
-            None => seed.deserialize(BorrowedStrDeserializer::new(value.as_str())),
-        }
     }
 }
