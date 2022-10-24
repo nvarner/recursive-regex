@@ -97,6 +97,7 @@ use std::collections::HashMap;
 
 use regex::{CaptureMatches, CaptureNames, Captures, Regex};
 
+mod just_string;
 mod multi_capture;
 mod single_capture;
 mod string;

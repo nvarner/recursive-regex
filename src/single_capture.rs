@@ -1,13 +1,12 @@
-use std::fmt::Display;
 use std::iter::Zip;
-use std::str::FromStr;
 
 use regex::{CaptureNames, Match, SubCaptureMatches};
 use serde::de::value::{BorrowedStrDeserializer, Error};
-use serde::de::{Error as ErrorTrait, MapAccess, SeqAccess};
+use serde::de::{MapAccess, SeqAccess};
 use serde::Deserializer;
 use serde::{de, serde_if_integer128};
 
+use crate::just_string::JustStr;
 use crate::string::StrDeserializer;
 use crate::RegexTree;
 
@@ -27,55 +26,27 @@ impl<'r, 'c, 't> SingleCaptureDeserializer<'r, 'c, 't> {
         }
     }
 
-    fn parse_bool(&mut self) -> Result<bool, Error> {
-        match self.whole_match().to_lowercase().as_str() {
-            "false" | "f" | "no" | "n" | "0" => Ok(false),
-            "true" | "t" | "yes" | "y" | "1" => Ok(true),
-            whole_match => Err(Error::custom(format!(
-                "got {whole_match:?} but expecting a bool"
-            ))),
-        }
-    }
-
-    fn parse<T: FromStr>(&mut self) -> Result<T, Error>
-    where
-        T::Err: Display,
-    {
-        self.whole_match()
-            .parse::<T>()
-            .map_err(|err| Error::custom(format!("parsing error: {err}")))
-    }
-
-    fn parse_char(&mut self) -> Result<char, Error> {
-        let whole_match = self.whole_match();
-        let mut chars = whole_match.chars();
-        let first_char = chars.next();
-        match first_char {
-            Some(first_char) if chars.next().is_none() => Ok(first_char),
-            _ => Err(Error::custom(format!(
-                "got {whole_match:?} but expecting a single char",
-            ))),
-        }
-    }
-
-    /// Only valid if called before `self.capture` is modified, so that capture
-    /// group 0 is still the first entry in the iterator
-    fn whole_match(&mut self) -> &'t str {
+    fn whole_match(mut self) -> &'t str {
+        // capture group 0 is the whole match
         self.capture.next().unwrap().unwrap().as_str()
+    }
+
+    fn just_str(self) -> JustStr<'t> {
+        JustStr::from_str(self.whole_match())
     }
 }
 
-impl<'de, 'r, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, 'de> {
+impl<'de, 'r: 'de, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, 'de> {
     type Error = Error;
 
-    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!()
+        self.deserialize_any(visitor)
     }
 
-    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
@@ -84,17 +55,10 @@ impl<'de, 'r, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, 'de> {
 
     fn deserialize_enum<V>(
         self,
-        name: &'static str,
-        variants: &'static [&'static str],
-        visitor: V,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        _visitor: V,
     ) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        unimplemented!()
-    }
-
-    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
@@ -124,7 +88,7 @@ impl<'de, 'r, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, 'de> {
 
     fn deserialize_tuple_struct<V>(
         self,
-        name: &'static str,
+        _name: &'static str,
         len: usize,
         visitor: V,
     ) -> Result<V::Value, Self::Error>
@@ -134,7 +98,7 @@ impl<'de, 'r, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, 'de> {
         self.deserialize_tuple(len, visitor)
     }
 
-    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
+    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
@@ -148,136 +112,6 @@ impl<'de, 'r, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, 'de> {
         let seq_access =
             SingleCaptureSeqAccess::from_regex_tree_and_captures(self.regex_tree, self.capture);
         visitor.visit_seq(seq_access)
-    }
-
-    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_bool(self.parse_bool()?)
-    }
-
-    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_i8(self.parse()?)
-    }
-
-    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_i16(self.parse()?)
-    }
-
-    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_i32(self.parse()?)
-    }
-
-    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_i64(self.parse()?)
-    }
-
-    serde_if_integer128! {
-        fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: de::Visitor<'de>
-        {
-            visitor.visit_i128(self.parse()?)
-        }
-    }
-
-    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_u8(self.parse()?)
-    }
-
-    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_u16(self.parse()?)
-    }
-
-    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_u32(self.parse()?)
-    }
-
-    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_u64(self.parse()?)
-    }
-
-    serde_if_integer128! {
-        fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-        where
-            V: de::Visitor<'de>
-        {
-            visitor.visit_u128(self.parse()?)
-        }
-    }
-
-    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_f32(self.parse()?)
-    }
-
-    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_f64(self.parse()?)
-    }
-
-    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_char(self.parse_char()?)
-    }
-
-    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        self.deserialize_str(visitor)
-    }
-
-    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_borrowed_str(self.whole_match())
-    }
-
-    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        self.deserialize_bytes(visitor)
-    }
-
-    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        visitor.visit_borrowed_bytes(self.whole_match().as_bytes())
     }
 
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -307,13 +141,150 @@ impl<'de, 'r, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, 'de> {
 
     fn deserialize_newtype_struct<V>(
         self,
-        name: &'static str,
+        _name: &'static str,
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
         visitor.visit_newtype_struct(self)
+    }
+
+    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_bool(visitor)
+    }
+
+    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_i8(visitor)
+    }
+
+    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_i16(visitor)
+    }
+
+    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_i32(visitor)
+    }
+
+    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_i64(visitor)
+    }
+
+    serde_if_integer128! {
+        fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+        where
+            V: de::Visitor<'de>
+        {
+            self.just_str().deserialize_i128(visitor)
+        }
+    }
+
+    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_u8(visitor)
+    }
+
+    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_u16(visitor)
+    }
+
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_u32(visitor)
+    }
+
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_u64(visitor)
+    }
+
+    serde_if_integer128! {
+        fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+        where
+            V: de::Visitor<'de>
+        {
+            self.just_str().deserialize_u128(visitor)
+        }
+    }
+
+    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_f32(visitor)
+    }
+
+    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_f64(visitor)
+    }
+
+    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_char(visitor)
+    }
+
+    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_identifier(visitor)
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_string(visitor)
+    }
+
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_str(visitor)
+    }
+
+    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_byte_buf(visitor)
+    }
+
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.just_str().deserialize_bytes(visitor)
     }
 }
 
@@ -355,7 +326,7 @@ impl<'r, 'c, 't> SingleCaptureMapAccess<'r, 'c, 't> {
     }
 }
 
-impl<'de, 'r, 'c> MapAccess<'de> for SingleCaptureMapAccess<'r, 'c, 'de> {
+impl<'de, 'r: 'de, 'c> MapAccess<'de> for SingleCaptureMapAccess<'r, 'c, 'de> {
     type Error = Error;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
@@ -409,7 +380,7 @@ impl<'r, 'c, 't> SingleCaptureSeqAccess<'r, 'c, 't> {
     }
 }
 
-impl<'de, 'r, 'c> SeqAccess<'de> for SingleCaptureSeqAccess<'r, 'c, 'de> {
+impl<'de, 'r: 'de, 'c> SeqAccess<'de> for SingleCaptureSeqAccess<'r, 'c, 'de> {
     type Error = Error;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
