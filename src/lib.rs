@@ -24,7 +24,7 @@
 //!
 //! To parse each line, we design the following regular expression
 //! ```regex
-//! (.*)'s favorite numbers? (?:is|are) (.*)
+//! (?P<name>.*)'s favorite numbers? (?:is|are) (?P<favorite_nums>.*)
 //! ```
 //! and call it `line`. After running this on the file, we have r list of
 //! matches. In each, the first capture group is the name, as desired. The
@@ -41,12 +41,11 @@
 //! 2, 6, and 14
 //! ```
 //!
-//! To parse the
-//! numbers, we design the regular expression
+//! To parse the numbers, we design the regular expression
 //! ```regex
 //! \d+
 //! ```
-//! and call it `number`. After running this on each of the second capture
+//! and call it `favorite_nums`. After running this on each of the second capture
 //! groups from before, capture group zero will contain just one number. We
 //! replace each of the second capture group entries with r list of numbers.
 //!
@@ -73,7 +72,7 @@
 //!     {
 //!         "name": "Genoveva",
 //!         "favorite_nums": ["2", "10", "11", "13", "15"]
-//!     }
+//!     },
 //!     {
 //!         "name": "Eryk",
 //!         "favorite_nums": ["6"]
@@ -96,11 +95,22 @@
 use std::collections::HashMap;
 
 use regex::{CaptureMatches, CaptureNames, Captures, Regex};
+use serde::de::value::Error;
+use serde::Deserialize;
+use string::StrDeserializer;
 
 mod just_string;
 mod multi_capture;
 mod single_capture;
 mod string;
+
+pub fn from_regex_tree_and_str<'t, 'r: 't, T: Deserialize<'t>>(
+    regex_tree: &'r RegexTree,
+    text: &'t str,
+) -> Result<T, Error> {
+    let deserializer = StrDeserializer::from_regex_tree_and_str(regex_tree, text);
+    T::deserialize(deserializer)
+}
 
 pub struct RegexTree {
     regex: Regex,
@@ -108,6 +118,10 @@ pub struct RegexTree {
 }
 
 impl RegexTree {
+    pub fn new(regex: Regex, children: HashMap<String, RegexTree>) -> Self {
+        Self { regex, children }
+    }
+
     pub fn captures<'t>(&self, text: &'t str) -> Option<Captures<'t>> {
         self.regex.captures(text)
     }
