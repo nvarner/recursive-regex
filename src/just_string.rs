@@ -5,11 +5,11 @@ use serde::de::value::Error;
 use serde::de::Error as ErrorTrait;
 use serde::{de, serde_if_integer128};
 
-pub struct JustStr<'t> {
+pub struct JustStrDeserializer<'t> {
     text: &'t str,
 }
 
-impl<'t> JustStr<'t> {
+impl<'t> JustStrDeserializer<'t> {
     pub fn from_str(text: &'t str) -> Self {
         Self { text }
     }
@@ -46,7 +46,7 @@ impl<'t> JustStr<'t> {
     }
 }
 
-impl<'de> de::Deserializer<'de> for JustStr<'de> {
+impl<'de> de::Deserializer<'de> for JustStrDeserializer<'de> {
     type Error = Error;
 
     fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>

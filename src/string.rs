@@ -1,7 +1,7 @@
 use serde::de::value::Error;
 use serde::{de, serde_if_integer128};
 
-use crate::just_string::JustStr;
+use crate::just_string::JustStrDeserializer;
 use crate::multi_capture::MultiCaptureSeqAccess;
 use crate::single_capture::{SingleCaptureDeserializer, SingleCaptureMapAccess};
 use crate::RegexTree;
@@ -16,8 +16,8 @@ impl<'r, 't> StrDeserializer<'r, 't> {
         Self { regex_tree, text }
     }
 
-    fn just_str(self) -> JustStr<'t> {
-        JustStr::from_str(self.text)
+    fn just_str(self) -> JustStrDeserializer<'t> {
+        JustStrDeserializer::from_str(self.text)
     }
 }
 

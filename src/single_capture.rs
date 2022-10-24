@@ -6,7 +6,7 @@ use serde::de::{MapAccess, SeqAccess};
 use serde::Deserializer;
 use serde::{de, serde_if_integer128};
 
-use crate::just_string::JustStr;
+use crate::just_string::JustStrDeserializer;
 use crate::string::StrDeserializer;
 use crate::RegexTree;
 
@@ -31,8 +31,8 @@ impl<'r, 'c, 't> SingleCaptureDeserializer<'r, 'c, 't> {
         self.capture.next().unwrap().unwrap().as_str()
     }
 
-    fn just_str(self) -> JustStr<'t> {
-        JustStr::from_str(self.whole_match())
+    fn just_str(self) -> JustStrDeserializer<'t> {
+        JustStrDeserializer::from_str(self.whole_match())
     }
 }
 
@@ -389,7 +389,7 @@ impl<'de, 'r: 'de, 'c> SeqAccess<'de> for SingleCaptureSeqAccess<'r, 'c, 'de> {
     {
         let next = self
             .next()
-            .map(|(key, value)| (key.map(|key| self.regex_tree.child(key)).flatten(), value));
+            .map(|(key, value)| (key.and_then(|key| self.regex_tree.child(key)), value));
         match next {
             Some((Some(regex_tree), value)) => seed
                 .deserialize(StrDeserializer::from_regex_tree_and_str(
