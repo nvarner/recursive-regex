@@ -59,13 +59,13 @@ pub struct RegexTree {
 }
 
 impl RegexTree {
-    pub fn root(regex: Regex) -> Builder {
-        Builder::new(regex)
+    pub fn root(regex: impl ToRegex) -> Builder {
+        Builder::new(regex.to_regex())
     }
 
-    pub fn leaf(regex: Regex) -> Self {
+    pub fn leaf(regex: impl ToRegex) -> Self {
         Self {
-            regex,
+            regex: regex.to_regex(),
             children: HashMap::new(),
         }
     }
@@ -110,5 +110,28 @@ impl Builder {
             regex: self.regex,
             children: self.children,
         }
+    }
+}
+
+pub trait ToRegex {
+    /// Convert to regex. Expected to panic upon failure.
+    fn to_regex(self) -> Regex;
+}
+
+impl<'a> ToRegex for &'a str {
+    fn to_regex(self) -> Regex {
+        Regex::new(self).unwrap()
+    }
+}
+
+impl ToRegex for String {
+    fn to_regex(self) -> Regex {
+        Regex::new(&self).unwrap()
+    }
+}
+
+impl ToRegex for Regex {
+    fn to_regex(self) -> Regex {
+        self
     }
 }
