@@ -63,6 +63,13 @@ impl RegexTree {
         Builder::new(regex)
     }
 
+    pub fn leaf(regex: Regex) -> Self {
+        Self {
+            regex,
+            children: HashMap::new(),
+        }
+    }
+
     pub fn captures<'t>(&self, text: &'t str) -> Option<Captures<'t>> {
         self.regex.captures(text)
     }
