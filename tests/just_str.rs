@@ -9,7 +9,7 @@ macro_rules! test_type {
         #[test]
         fn $name() {
             let data_str = $data;
-            let data_struct = Data::<$t>::deserialize(JustStrDeserializer::from_str(data_str));
+            let data_struct = Data::<$t>::deserialize(JustStrDeserializer::from_string(data_str));
             assert_eq!(data_struct, Ok(Data($expected)))
         }
     };

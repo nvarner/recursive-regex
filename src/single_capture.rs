@@ -32,7 +32,7 @@ impl<'r, 'c, 't> SingleCaptureDeserializer<'r, 'c, 't> {
     }
 
     fn just_str(self) -> JustStrDeserializer<'t> {
-        JustStrDeserializer::from_str(self.whole_match())
+        JustStrDeserializer::from_string(self.whole_match())
     }
 }
 

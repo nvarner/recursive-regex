@@ -5,12 +5,19 @@ use serde::de::value::Error;
 use serde::de::Error as ErrorTrait;
 use serde::{de, serde_if_integer128};
 
+/// Deserialize just a string, in the sense that regular expressions are no
+/// longer needed to complete parsing. This should be invoked near the end of
+/// (nearly) all deserialization to take the final capture groups and turn them
+/// into numbers, `bool`s, `&str`s, or whatever other type was requested.
 pub struct JustStrDeserializer<'t> {
     text: &'t str,
 }
 
 impl<'t> JustStrDeserializer<'t> {
-    pub fn from_str(text: &'t str) -> Self {
+    /// Create a new deserializer from a `&str`. Idiomatically, should be called
+    /// `from_str`, but is renamed to avoid confusion with the
+    /// [`FromStr`](std::str::FromStr) trait.
+    pub fn from_string(text: &'t str) -> Self {
         Self { text }
     }
 
@@ -302,13 +309,13 @@ mod test {
     fn bool_success() {
         let true_strs = ["true", "tRuE", "T", "Yes", "y", "1"];
         for x in true_strs {
-            let deserializer = JustStrDeserializer::from_str(x);
+            let deserializer = JustStrDeserializer::from_string(x);
             assert_eq!(deserializer.parse_bool(), Ok(true));
         }
 
         let false_strs = ["false", "FaLsE", "F", "No", "n", "0"];
         for x in false_strs {
-            let deserializer = JustStrDeserializer::from_str(x);
+            let deserializer = JustStrDeserializer::from_string(x);
             assert_eq!(deserializer.parse_bool(), Ok(false));
         }
     }
@@ -317,7 +324,7 @@ mod test {
     fn bool_fail() {
         let fail_strs = ["frue", "talse", "2", "sure", "maybe", "tr", "fal"];
         for x in fail_strs {
-            let deserializer = JustStrDeserializer::from_str(x);
+            let deserializer = JustStrDeserializer::from_string(x);
             assert!(deserializer.parse_bool().is_err());
         }
     }
@@ -326,7 +333,7 @@ mod test {
     fn char_success() {
         let strs_output = [("f", 'f'), (" ", ' '), ("H", 'H')];
         for (x, expected) in strs_output {
-            let deserializer = JustStrDeserializer::from_str(x);
+            let deserializer = JustStrDeserializer::from_string(x);
             assert_eq!(deserializer.parse_char(), Ok(expected));
         }
     }
@@ -335,7 +342,7 @@ mod test {
     fn char_fail() {
         let fail_strs = ["false", "Hello", ""];
         for x in fail_strs {
-            let deserializer = JustStrDeserializer::from_str(x);
+            let deserializer = JustStrDeserializer::from_string(x);
             assert!(deserializer.parse_char().is_err());
         }
     }
@@ -344,7 +351,7 @@ mod test {
     fn int_success() {
         let strs_output = [("123", 123), ("-432", -432)];
         for (x, expected) in strs_output {
-            let deserializer = JustStrDeserializer::from_str(x);
+            let deserializer = JustStrDeserializer::from_string(x);
             assert_eq!(deserializer.parse(), Ok(expected));
         }
     }
@@ -353,7 +360,7 @@ mod test {
     fn int_fail() {
         let fail_strs = ["123abc", "12.6"];
         for x in fail_strs {
-            let deserializer = JustStrDeserializer::from_str(x);
+            let deserializer = JustStrDeserializer::from_string(x);
             assert!(deserializer.parse::<i32>().is_err());
         }
     }

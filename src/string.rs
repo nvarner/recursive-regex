@@ -17,7 +17,7 @@ impl<'r, 't> StrDeserializer<'r, 't> {
     }
 
     fn just_str(self) -> JustStrDeserializer<'t> {
-        JustStrDeserializer::from_str(self.text)
+        JustStrDeserializer::from_string(self.text)
     }
 }
 
