@@ -1,6 +1,6 @@
 use std::iter::Zip;
 
-use regex::{CaptureNames, Match, SubCaptureMatches};
+use crate::regex::{CaptureNames, Match, SubCaptureMatches};
 use serde::de::value::{BorrowedStrDeserializer, Error};
 use serde::de::{MapAccess, SeqAccess};
 use serde::Deserializer;

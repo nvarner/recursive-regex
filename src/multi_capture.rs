@@ -1,4 +1,4 @@
-use regex::CaptureMatches;
+use crate::regex::CaptureMatches;
 use serde::de;
 use serde::de::value::Error;
 use serde::de::SeqAccess;
