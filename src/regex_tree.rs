@@ -7,6 +7,15 @@ use crate::regex::{CaptureMatches, CaptureNames, Captures, Regex};
 /// one of its children, it recurses, and the child regex tree will be run on
 /// the capture group.
 ///
+/// ## Construction
+/// For a regex tree with no children, use [`leaf`](RegexTree::leaf).
+///
+///
+/// For a regex tree with children, use [`root`](RegexTree::root), which returns
+/// a [`Builder`](Builder). Add children to the builder with
+/// [`with_child`](Builder::with_child`), then finish with
+/// [`build`](Builder::build).
+///
 /// ## Example
 /// Consider the following regex tree:
 /// ```text
@@ -59,10 +68,13 @@ pub struct RegexTree {
 }
 
 impl RegexTree {
+    /// Begin construction of a regex tree with children. See
+    /// [`Builder`](Builder).
     pub fn root(regex: impl ToRegex) -> Builder {
         Builder::new(regex.to_regex())
     }
 
+    /// Construct a regex tree with no children.
     pub fn leaf(regex: impl ToRegex) -> Self {
         Self {
             regex: regex.to_regex(),
@@ -70,19 +82,19 @@ impl RegexTree {
         }
     }
 
-    pub fn captures<'t>(&self, text: &'t str) -> Option<Captures<'t>> {
+    pub(crate) fn captures<'t>(&self, text: &'t str) -> Option<Captures<'t>> {
         self.regex.captures(text)
     }
 
-    pub fn captures_iter<'r, 't>(&'r self, text: &'t str) -> CaptureMatches<'r, 't> {
+    pub(crate) fn captures_iter<'r, 't>(&'r self, text: &'t str) -> CaptureMatches<'r, 't> {
         self.regex.captures_iter(text)
     }
 
-    pub fn names(&self) -> CaptureNames {
+    pub(crate) fn names(&self) -> CaptureNames {
         self.regex.capture_names()
     }
 
-    pub fn child(&self, name: &str) -> Option<&RegexTree> {
+    pub(crate) fn child(&self, name: &str) -> Option<&RegexTree> {
         self.children.get(name)
     }
 }
@@ -100,11 +112,13 @@ impl Builder {
         }
     }
 
+    /// Add a child with the given name to the regex tree under construction
     pub fn with_child(mut self, name: impl Into<String>, child: RegexTree) -> Self {
         self.children.insert(name.into(), child);
         self
     }
 
+    /// Finish construction and create the regex tree
     pub fn build(self) -> RegexTree {
         RegexTree {
             regex: self.regex,

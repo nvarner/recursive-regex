@@ -6,7 +6,7 @@ use string::StrDeserializer;
 
 mod just_string;
 mod multi_capture;
-mod regex_tree;
+pub mod regex_tree;
 mod single_capture;
 mod string;
 
