@@ -12,6 +12,8 @@ mod multi_capture;
 mod single_capture;
 mod string;
 
+pub use just_string::JustStrDeserializer;
+
 pub fn from_regex_tree_and_str<'t, 'r: 't, T: Deserialize<'t>>(
     regex_tree: &'r RegexTree,
     text: &'t str,
