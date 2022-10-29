@@ -112,3 +112,8 @@ representation and with some additional metadata, it looks like this:
 ```
 
 Corresponding code is available under `tests/favorite_numbers.rs`.
+
+## Features
+- `deserialize-regex-tree`: implements `Deserialize` for `RegexTree`. This
+allows users to provide a regex tree as a file and easily customize parsing at
+runtime.
