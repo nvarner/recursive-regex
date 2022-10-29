@@ -59,8 +59,8 @@ pub struct RegexTree {
 }
 
 impl RegexTree {
-    pub fn new(regex: Regex, children: HashMap<String, RegexTree>) -> Self {
-        Self { regex, children }
+    pub fn root(regex: Regex) -> Builder {
+        Builder::new(regex)
     }
 
     pub fn captures<'t>(&self, text: &'t str) -> Option<Captures<'t>> {
@@ -77,5 +77,31 @@ impl RegexTree {
 
     pub fn child(&self, name: &str) -> Option<&RegexTree> {
         self.children.get(name)
+    }
+}
+
+pub struct Builder {
+    regex: Regex,
+    children: HashMap<String, RegexTree>,
+}
+
+impl Builder {
+    fn new(regex: Regex) -> Self {
+        Self {
+            regex,
+            children: HashMap::new(),
+        }
+    }
+
+    pub fn with_child(mut self, name: impl Into<String>, child: RegexTree) -> Self {
+        self.children.insert(name.into(), child);
+        self
+    }
+
+    pub fn build(self) -> RegexTree {
+        RegexTree {
+            regex: self.regex,
+            children: self.children,
+        }
     }
 }
