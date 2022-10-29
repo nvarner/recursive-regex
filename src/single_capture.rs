@@ -351,7 +351,7 @@ impl<'de, 'r: 'de, 'c> MapAccess<'de> for SingleCaptureMapAccess<'r, 'c, 'de> {
                 regex_tree,
                 value.as_str(),
             )),
-            None => seed.deserialize(BorrowedStrDeserializer::new(value.as_str())),
+            None => seed.deserialize(JustStrDeserializer::from_string(value.as_str())),
         }
     }
 }
@@ -398,7 +398,7 @@ impl<'de, 'r: 'de, 'c> SeqAccess<'de> for SingleCaptureSeqAccess<'r, 'c, 'de> {
                 ))
                 .map(Some),
             Some((None, value)) => seed
-                .deserialize(BorrowedStrDeserializer::new(value.as_str()))
+                .deserialize(JustStrDeserializer::from_string(value.as_str()))
                 .map(Some),
             None => Ok(None),
         }
