@@ -1,7 +1,4 @@
-use std::collections::HashMap;
-
 use recursive_regex::{from_regex_tree_and_str, RegexTree};
-use regex::Regex;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -22,14 +19,10 @@ Alpheus's favorite numbers are 1, 6, 12, and 19
 Sven's favorite numbers are 1 and 5
 Annabella's favorite numbers are 2, 6, and 14";
 
-    let regex_subtree = RegexTree::new(Regex::new("\\d+").unwrap(), HashMap::new());
-    let mut hash_map = HashMap::new();
-    hash_map.insert("favorite_numbers".to_string(), regex_subtree);
-
-    let regex_tree = RegexTree::new(
-        Regex::new("(?P<name>.*)'s favorite numbers? (?:is|are) (?P<favorite_numbers>.*)").unwrap(),
-        hash_map,
-    );
+    let regex_tree =
+        RegexTree::root("(?P<name>.*)'s favorite numbers? (?:is|are) (?P<favorite_numbers>.*)")
+            .with_child("favorite_numbers", RegexTree::leaf(r"\d+"))
+            .build();
 
     let people: Vec<Person> = from_regex_tree_and_str(&regex_tree, file).unwrap();
 

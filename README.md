@@ -13,14 +13,14 @@ description, solution, etc. from a LaTeX file.
 
 ## Basic example
 ```rust
-use std::collections::HashMap;
 use recursive_regex::{RegexTree, from_regex_tree_and_str};
-use recursive_regex::regex::Regex;
 
 // Text we want to deseralize, possibly from a file
 let text = "1 2 456";
 
-let regex_tree = RegexTree::new(Regex::new("\\d+").unwrap(), HashMap::new());
+// Construct a regex tree with no children -- more or less just a regular regex
+// See `RegexTree::root` for more complex functionality
+let regex_tree = RegexTree::leaf(r"\d+");
 let deserialized: Vec<u32> = from_regex_tree_and_str(&regex_tree, &text).unwrap();
 assert_eq!(deserialized, vec![1, 2, 456]);
 ```

@@ -23,10 +23,8 @@ pub use just_string::JustStrDeserializer;
 /// ## Example
 /// ```
 /// # use recursive_regex::{RegexTree, from_regex_tree_and_str};
-/// # use regex::Regex;
-/// # use std::collections::HashMap;
-/// let regex_tree = RegexTree::new(Regex::new("\\d+").unwrap(), HashMap::new());
 /// let text = "1 2 456";
+/// let regex_tree = RegexTree::leaf(r"\d+");
 /// let deserialized: Vec<u32> = from_regex_tree_and_str(&regex_tree, &text).unwrap();
 /// assert_eq!(deserialized, vec![1, 2, 456]);
 /// ```
