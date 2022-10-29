@@ -35,3 +35,10 @@ pub fn from_regex_tree_and_str<'t, 'r: 't, T: Deserialize<'t>>(
     let deserializer = StrDeserializer::from_regex_tree_and_str(regex_tree, text);
     T::deserialize(deserializer)
 }
+
+pub fn from_regex_tree_and_str_include_uncaptured<'t, 'r: 't, T: Deserialize<'t>>(
+    regex_tree: &'r RegexTree,
+    text: &'t str,
+) {
+    todo!()
+}
