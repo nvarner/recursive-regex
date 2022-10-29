@@ -14,15 +14,33 @@ description, solution, etc. from a LaTeX file.
 ## Basic example
 ```rust
 use recursive_regex::{RegexTree, from_regex_tree_and_str};
+use serde::Deserialize;
 
 // Text we want to deseralize, possibly from a file
-let text = "1 2 456";
+let text = r#"
+1 2 456 true
+8 3 -54 false
+"#;
 
-// Construct a regex tree with no children -- more or less just a regular regex
-// See `RegexTree::root` for more complex functionality
-let regex_tree = RegexTree::leaf(r"\d+");
-let deserialized: Vec<u32> = from_regex_tree_and_str(&regex_tree, &text).unwrap();
-assert_eq!(deserialized, vec![1, 2, 456]);
+// Regex tree that breaks down each line into numbers and boolean, then breaks
+// down numbers into a vec. Regex trees can be explicitly constructed, like so,
+// or deserialized with the `deserialize-regex-tree` feature.
+let regex_tree = RegexTree::root(r"(?P<nums>[-\d\s]*) (?P<yn>true|false)")
+    .with_child("nums", RegexTree::leaf(r"-?\d+"))
+    .build();
+
+// Struct to deserialize each line into
+#[derive(Deserialize, Debug, PartialEq, Eq)]
+struct Line {
+    nums: Vec<i32>,
+    yn: bool,
+}
+
+let deserialized: Vec<Line> = from_regex_tree_and_str(&regex_tree, &text).unwrap();
+assert_eq!(deserialized, vec![
+    Line { nums: vec![1, 2, 456], yn: true },
+    Line { nums: vec![8, 3, -54], yn: false },
+]);
 ```
 
 ## Example use case
