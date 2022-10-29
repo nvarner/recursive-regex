@@ -25,7 +25,7 @@ let deserialized: Vec<u32> = from_regex_tree_and_str(&regex_tree, &text).unwrap(
 assert_eq!(deserialized, vec![1, 2, 456]);
 ```
 
-## Example usecase
+## Example use case
 The following data file is being maintained by hand, but we want it in a
 more structured format. We need to extract names and a list of the favorite
 numbers associated with those names.
