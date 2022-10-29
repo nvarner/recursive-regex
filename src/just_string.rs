@@ -293,3 +293,68 @@ impl<'de> de::Deserializer<'de> for JustStrDeserializer<'de> {
         visitor.visit_newtype_struct(self)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::JustStrDeserializer;
+
+    #[test]
+    fn bool_success() {
+        let true_strs = ["true", "tRuE", "T", "Yes", "y", "1"];
+        for x in true_strs {
+            let deserializer = JustStrDeserializer::from_str(x);
+            assert_eq!(deserializer.parse_bool(), Ok(true));
+        }
+
+        let false_strs = ["false", "FaLsE", "F", "No", "n", "0"];
+        for x in false_strs {
+            let deserializer = JustStrDeserializer::from_str(x);
+            assert_eq!(deserializer.parse_bool(), Ok(false));
+        }
+    }
+
+    #[test]
+    fn bool_fail() {
+        let fail_strs = ["frue", "talse", "2", "sure", "maybe", "tr", "fal"];
+        for x in fail_strs {
+            let deserializer = JustStrDeserializer::from_str(x);
+            assert!(deserializer.parse_bool().is_err());
+        }
+    }
+
+    #[test]
+    fn char_success() {
+        let strs_output = [("f", 'f'), (" ", ' '), ("H", 'H')];
+        for (x, expected) in strs_output {
+            let deserializer = JustStrDeserializer::from_str(x);
+            assert_eq!(deserializer.parse_char(), Ok(expected));
+        }
+    }
+
+    #[test]
+    fn char_fail() {
+        let fail_strs = ["false", "Hello", ""];
+        for x in fail_strs {
+            let deserializer = JustStrDeserializer::from_str(x);
+            assert!(deserializer.parse_char().is_err());
+        }
+    }
+
+    #[test]
+    fn int_success() {
+        let strs_output = [("123", 123), ("-432", -432)];
+        for (x, expected) in strs_output {
+            let deserializer = JustStrDeserializer::from_str(x);
+            assert_eq!(deserializer.parse(), Ok(expected));
+        }
+    }
+
+    #[test]
+    fn int_fail() {
+        let fail_strs = ["123abc", "12.6"];
+        for x in fail_strs {
+            let deserializer = JustStrDeserializer::from_str(x);
+            assert!(deserializer.parse::<i32>().is_err());
+        }
+    }
+}
