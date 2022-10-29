@@ -6,7 +6,26 @@ times as possible, extracting data via capture groups. On each capture
 group, it may recurse with a new regular expression to further parse the
 results.
 
-## Example
+The crate is designed to be used for "parsing" unstructured data or structured
+data for which it's not worth writing a real parser. In particular, the
+motivation is parsing homework questions, with question title, points,
+description, solution, etc. from a LaTeX file.
+
+## Basic example
+```
+use std::collections::HashMap;
+use recursive_regex::{RegexTree, from_regex_tree_and_str};
+use recursive_regex::regex::Regex;
+
+// Text we want to deseralize, possibly from a file
+let text = "1 2 456";
+
+let regex_tree = RegexTree::new(Regex::new("\\d+").unwrap(), HashMap::new());
+let deserialized: Vec<u32> = from_regex_tree_and_str(&regex_tree, &text).unwrap();
+assert_eq!(deserialized, vec![1, 2, 456]);
+```
+
+## Example usecase
 The following data file is being maintained by hand, but we want it in a
 more structured format. We need to extract names and a list of the favorite
 numbers associated with those names.
@@ -91,3 +110,5 @@ representation and with some additional metadata, it looks like this:
     }
 ]
 ```
+
+Corresponding code is available under `tests/favorite_numbers.rs`.
