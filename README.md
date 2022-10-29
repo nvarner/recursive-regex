@@ -12,7 +12,7 @@ motivation is parsing homework questions, with question title, points,
 description, solution, etc. from a LaTeX file.
 
 ## Basic example
-```
+```rust
 use std::collections::HashMap;
 use recursive_regex::{RegexTree, from_regex_tree_and_str};
 use recursive_regex::regex::Regex;
