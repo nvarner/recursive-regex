@@ -66,6 +66,7 @@ use crate::regex::{CaptureMatches, CaptureNames, Captures, Regex};
 /// in the opinion list were pairs (boolean number), perhaps indicating
 /// belief and strength of belief, the opinion_list could have another child
 /// to break up each space-separated pair into a logical tuple.
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "deserialize-regex-tree", derive(Deserialize))]
 pub struct RegexTree {
     #[cfg_attr(feature = "deserialize-regex-tree", serde(with = "serde_regex"))]
