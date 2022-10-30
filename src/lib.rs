@@ -37,9 +37,9 @@ pub fn from_regex_tree_and_str<'t, 'r: 't, T: Deserialize<'t>>(
     T::deserialize(deserializer)
 }
 
-pub fn from_regex_tree_and_str_include_uncaptured<'t, 'r: 't, T: Deserialize<'t>>(
+pub fn get_uncaptured<'r, 't: 'r>(
     regex_tree: &'r RegexTree,
     text: &'t str,
-) {
-    todo!()
+) -> impl Iterator<Item = &'t str> + 'r {
+    uncaptured::get_uncaptured(text, regex_tree.matches_iter(text))
 }

@@ -43,6 +43,42 @@ assert_eq!(deserialized, vec![
 ]);
 ```
 
+## Uncaptured
+When reading data from a large file, it may be important to verify that the
+entire file was actually parsed. This is possible via `get_uncaptured`.
+
+Consider the above example, but imagine having forgotten to allow for negative
+signs. In a large enough file where negative signs are uncommon, it may be hard
+to notice their ommision. However, we can check to see what was not matched by
+a top level regex.
+```rust
+use recursive_regex::{RegexTree, get_uncaptured};
+use serde::Deserialize;
+
+let text = r#"
+1 2 456 true
+8 3 -54 false
+"#;
+
+// Note that we do not account for `-` in numbers. Some lines will not be
+// properly parsed.
+let regex_tree = RegexTree::root(r"(?P<nums>[\d\s]*) (?P<yn>true|false)")
+    .with_child("nums", RegexTree::leaf(r"\d+"))
+    .build();
+
+#[derive(Deserialize, Debug, PartialEq, Eq)]
+struct Line {
+    nums: Vec<i32>,
+    yn: bool,
+}
+
+let uncaptured: Vec<&str> = get_uncaptured(&regex_tree, &text).collect();
+
+// We could inspect the output and notice the numbers, and negative sign, which
+// we had wanted to capture but did not
+assert_eq!(vec!["\n8 3 -", "\n"], uncaptured);
+```
+
 ## Example use case
 The following data file is being maintained by hand, but we want it in a
 more structured format. We need to extract names and a list of the favorite

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use regex::Matches;
 #[cfg(feature = "deserialize-regex-tree")]
 use serde::Deserialize;
 
@@ -94,6 +95,10 @@ impl RegexTree {
 
     pub(crate) fn captures_iter<'r, 't>(&'r self, text: &'t str) -> CaptureMatches<'r, 't> {
         self.regex.captures_iter(text)
+    }
+
+    pub(crate) fn matches_iter<'r, 't>(&'r self, text: &'t str) -> Matches<'r, 't> {
+        self.regex.find_iter(text)
     }
 
     pub(crate) fn names(&self) -> CaptureNames {

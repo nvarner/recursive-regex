@@ -1,16 +1,13 @@
 use itertools::Itertools;
-use regex::Captures;
+use regex::Matches;
 use std::iter;
 
-pub fn get_uncaptured_by_one<'t, 'c>(
+pub fn get_uncaptured<'r, 't: 'r>(
     text: &'t str,
-    captures: &'c Captures<'t>,
-) -> impl Iterator<Item = &'t str> + 'c {
+    matches: Matches<'r, 't>,
+) -> impl Iterator<Item = &'t str> + 'r {
     let before = iter::once((0, 0));
-    let between = captures
-        .iter()
-        .flatten()
-        .map(|cap| (cap.start(), cap.end()));
+    let between = matches.map(|re_match| (re_match.start(), re_match.end()));
     let after = iter::once((text.len(), text.len()));
     let all = before.chain(between).chain(after);
 
