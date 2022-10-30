@@ -9,6 +9,7 @@ mod multi_capture;
 pub mod regex_tree;
 mod single_capture;
 mod string;
+mod uncaptured;
 
 pub use regex;
 
