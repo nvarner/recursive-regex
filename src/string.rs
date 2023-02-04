@@ -4,20 +4,41 @@ use serde::{de, serde_if_integer128};
 use crate::just_string::JustStrDeserializer;
 use crate::multi_capture::MultiCaptureSeqAccess;
 use crate::single_capture::{SingleCaptureDeserializer, SingleCaptureMapAccess};
+use crate::spanned::{
+    SpannedDeserializer, SPANNED_BEGIN, SPANNED_END, SPANNED_NAME, SPANNED_VALUE,
+};
 use crate::RegexTree;
 
 pub struct StrDeserializer<'r, 't> {
     regex_tree: &'r RegexTree,
     text: &'t str,
+    /// Byte offset of the start of `text` within the originally parsed string
+    start: usize,
 }
 
 impl<'r, 't> StrDeserializer<'r, 't> {
     pub fn from_regex_tree_and_str(regex_tree: &'r RegexTree, text: &'t str) -> Self {
-        Self { regex_tree, text }
+        Self {
+            regex_tree,
+            text,
+            start: 0,
+        }
+    }
+
+    pub(crate) fn from_regex_tree_and_offset_str(
+        regex_tree: &'r RegexTree,
+        text: &'t str,
+        start: usize,
+    ) -> Self {
+        Self {
+            regex_tree,
+            text,
+            start,
+        }
     }
 
     fn just_str(self) -> JustStrDeserializer<'t> {
-        JustStrDeserializer::from_string(self.text)
+        JustStrDeserializer::new(self.text, self.start)
     }
 }
 
@@ -52,14 +73,19 @@ impl<'de, 'r: 'de> de::Deserializer<'de> for StrDeserializer<'r, 'de> {
 
     fn deserialize_struct<V>(
         self,
-        _name: &'static str,
-        _fields: &'static [&'static str],
+        name: &'static str,
+        fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        self.deserialize_map(visitor)
+        if name == SPANNED_NAME && fields == [SPANNED_BEGIN, SPANNED_END, SPANNED_VALUE] {
+            let end = self.start + self.text.len();
+            visitor.visit_map(SpannedDeserializer::new(self.start, end, self))
+        } else {
+            self.deserialize_map(visitor)
+        }
     }
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -71,8 +97,11 @@ impl<'de, 'r: 'de> de::Deserializer<'de> for StrDeserializer<'r, 'de> {
             .regex_tree
             .captures(self.text)
             .ok_or_else(|| <Error as de::Error>::custom("regular expression does not match"))?;
-        let map_access =
-            SingleCaptureMapAccess::from_regex_tree_and_captures(self.regex_tree, captures.iter());
+        let map_access = SingleCaptureMapAccess::from_regex_tree_and_captures(
+            self.regex_tree,
+            captures.iter(),
+            self.start,
+        );
         visitor.visit_map(map_access)
     }
 
@@ -101,8 +130,11 @@ impl<'de, 'r: 'de> de::Deserializer<'de> for StrDeserializer<'r, 'de> {
     {
         // Deserialize from many captures
         let captures_iter = self.regex_tree.captures_iter(self.text);
-        let seq_access =
-            MultiCaptureSeqAccess::from_regex_tree_and_captures(self.regex_tree, captures_iter);
+        let seq_access = MultiCaptureSeqAccess::from_regex_tree_and_captures(
+            self.regex_tree,
+            captures_iter,
+            self.start,
+        );
         visitor.visit_seq(seq_access)
     }
 
@@ -117,6 +149,7 @@ impl<'de, 'r: 'de> de::Deserializer<'de> for StrDeserializer<'r, 'de> {
                 let deserializer = SingleCaptureDeserializer::from_regex_tree_and_single_capture(
                     self.regex_tree,
                     captures.iter(),
+                    self.start,
                 );
                 visitor.visit_some(deserializer)
             }

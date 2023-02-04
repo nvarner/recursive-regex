@@ -1,6 +1,10 @@
+use regex::Match;
 use std::fmt::Display;
 use std::str::FromStr;
 
+use crate::spanned::{
+    SpannedDeserializer, SPANNED_BEGIN, SPANNED_END, SPANNED_NAME, SPANNED_VALUE,
+};
 use serde::de::value::Error;
 use serde::de::Error as ErrorTrait;
 use serde::{de, serde_if_integer128};
@@ -11,14 +15,21 @@ use serde::{de, serde_if_integer128};
 /// into numbers, `bool`s, `&str`s, or whatever other type was requested.
 pub struct JustStrDeserializer<'t> {
     text: &'t str,
+    /// Byte offset of the start of `text` within the originally parsed string
+    start: usize,
 }
 
 impl<'t> JustStrDeserializer<'t> {
-    /// Create a new deserializer from a `&str`. Idiomatically, should be called
-    /// `from_str`, but is renamed to avoid confusion with the
-    /// [`FromStr`](std::str::FromStr) trait.
-    pub fn from_string(text: &'t str) -> Self {
-        Self { text }
+    pub fn new(text: &'t str, start: usize) -> Self {
+        Self { text, start }
+    }
+
+    /// Create a new deserializer from a `Match`
+    pub fn from_match(re_match: Match<'t>, start: usize) -> Self {
+        Self {
+            text: re_match.as_str(),
+            start,
+        }
     }
 
     fn parse_bool(self) -> Result<bool, Error> {
@@ -98,14 +109,19 @@ impl<'de> de::Deserializer<'de> for JustStrDeserializer<'de> {
 
     fn deserialize_struct<V>(
         self,
-        _name: &'static str,
-        _fields: &'static [&'static str],
+        name: &'static str,
+        fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        self.deserialize_map(visitor)
+        if name == SPANNED_NAME && fields == [SPANNED_BEGIN, SPANNED_END, SPANNED_VALUE] {
+            let end = self.start + self.text.len();
+            visitor.visit_map(SpannedDeserializer::new(self.start, end, self))
+        } else {
+            self.deserialize_map(visitor)
+        }
     }
 
     fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
@@ -304,18 +320,19 @@ impl<'de> de::Deserializer<'de> for JustStrDeserializer<'de> {
 #[cfg(test)]
 mod test {
     use super::JustStrDeserializer;
+    use serde::Deserialize;
 
     #[test]
     fn bool_success() {
         let true_strs = ["true", "tRuE", "T", "Yes", "y", "1"];
         for x in true_strs {
-            let deserializer = JustStrDeserializer::from_string(x);
+            let deserializer = JustStrDeserializer::new(x, 0);
             assert_eq!(deserializer.parse_bool(), Ok(true));
         }
 
         let false_strs = ["false", "FaLsE", "F", "No", "n", "0"];
         for x in false_strs {
-            let deserializer = JustStrDeserializer::from_string(x);
+            let deserializer = JustStrDeserializer::new(x, 0);
             assert_eq!(deserializer.parse_bool(), Ok(false));
         }
     }
@@ -324,7 +341,7 @@ mod test {
     fn bool_fail() {
         let fail_strs = ["frue", "talse", "2", "sure", "maybe", "tr", "fal"];
         for x in fail_strs {
-            let deserializer = JustStrDeserializer::from_string(x);
+            let deserializer = JustStrDeserializer::new(x, 0);
             assert!(deserializer.parse_bool().is_err());
         }
     }
@@ -333,7 +350,7 @@ mod test {
     fn char_success() {
         let strs_output = [("f", 'f'), (" ", ' '), ("H", 'H')];
         for (x, expected) in strs_output {
-            let deserializer = JustStrDeserializer::from_string(x);
+            let deserializer = JustStrDeserializer::new(x, 0);
             assert_eq!(deserializer.parse_char(), Ok(expected));
         }
     }
@@ -342,7 +359,7 @@ mod test {
     fn char_fail() {
         let fail_strs = ["false", "Hello", ""];
         for x in fail_strs {
-            let deserializer = JustStrDeserializer::from_string(x);
+            let deserializer = JustStrDeserializer::new(x, 0);
             assert!(deserializer.parse_char().is_err());
         }
     }
@@ -351,7 +368,7 @@ mod test {
     fn int_success() {
         let strs_output = [("123", 123), ("-432", -432)];
         for (x, expected) in strs_output {
-            let deserializer = JustStrDeserializer::from_string(x);
+            let deserializer = JustStrDeserializer::new(x, 0);
             assert_eq!(deserializer.parse(), Ok(expected));
         }
     }
@@ -360,8 +377,42 @@ mod test {
     fn int_fail() {
         let fail_strs = ["123abc", "12.6"];
         for x in fail_strs {
-            let deserializer = JustStrDeserializer::from_string(x);
+            let deserializer = JustStrDeserializer::new(x, 0);
             assert!(deserializer.parse::<i32>().is_err());
         }
     }
+
+    #[derive(Deserialize, Debug, PartialEq, Eq)]
+    struct Data<T>(T);
+
+    macro_rules! test_type {
+        ($t:ty, $name:ident, $data:expr, $expected:expr) => {
+            #[test]
+            fn $name() {
+                let data_str = $data;
+                let data_struct = Data::<$t>::deserialize(JustStrDeserializer::new(data_str, 0));
+                assert_eq!(data_struct, Ok(Data($expected)))
+            }
+        };
+    }
+
+    test_type!(bool, test_bool, "true", true);
+    test_type!(i32, test_i32, "-0324", -324);
+    test_type!(u32, test_u32, "52", 52);
+    test_type!(f32, test_f32, "4235.2", 4235.2);
+    test_type!(char, test_char, "d", 'd');
+    test_type!(
+        String,
+        test_string,
+        "hello world",
+        "hello world".to_string()
+    );
+    test_type!(&str, test_str, "hello world", "hello world");
+    test_type!(
+        Option<&str>,
+        test_option,
+        "hello world",
+        Some("hello world")
+    );
+    test_type!((), test_unit, "yf78iy f37y", ());
 }

@@ -2,19 +2,20 @@
 
 use serde::de::value::Error;
 use serde::Deserialize;
-use string::StrDeserializer;
 
 mod just_string;
 mod multi_capture;
 pub mod regex_tree;
 mod single_capture;
+mod spanned;
 mod string;
 mod uncaptured;
 
 pub use regex;
 
 pub use crate::regex_tree::RegexTree;
-pub use just_string::JustStrDeserializer;
+pub use crate::spanned::Spanned;
+pub use crate::string::StrDeserializer;
 
 /// Primary entry point to the library.
 ///

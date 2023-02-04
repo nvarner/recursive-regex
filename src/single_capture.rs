@@ -7,32 +7,53 @@ use serde::Deserializer;
 use serde::{de, serde_if_integer128};
 
 use crate::just_string::JustStrDeserializer;
+use crate::spanned::{
+    SpannedDeserializer, SPANNED_BEGIN, SPANNED_END, SPANNED_NAME, SPANNED_VALUE,
+};
 use crate::string::StrDeserializer;
 use crate::RegexTree;
 
 pub struct SingleCaptureDeserializer<'r, 'c, 't> {
     regex_tree: &'r RegexTree,
     capture: SubCaptureMatches<'c, 't>,
+    /// Byte offset of the start of the string `capture` is over within the originally parsed string
+    start: usize,
 }
 
 impl<'r, 'c, 't> SingleCaptureDeserializer<'r, 'c, 't> {
     pub fn from_regex_tree_and_single_capture(
         regex_tree: &'r RegexTree,
         capture: SubCaptureMatches<'c, 't>,
+        start: usize,
     ) -> Self {
         Self {
             regex_tree,
             capture,
+            start,
         }
     }
 
-    fn whole_match(mut self) -> &'t str {
+    fn whole_match(mut self) -> Match<'t> {
         // capture group 0 is the whole match
-        self.capture.next().unwrap().unwrap().as_str()
+        self.capture.next().unwrap().unwrap()
+    }
+
+    fn whole_match_cloned(&self) -> Match<'t> {
+        // capture group 0 is the whole match
+        self.capture.clone().next().unwrap().unwrap()
     }
 
     fn just_str(self) -> JustStrDeserializer<'t> {
-        JustStrDeserializer::from_string(self.whole_match())
+        let start = self.start;
+        let whole_match = self.whole_match();
+        JustStrDeserializer::from_match(whole_match, start + whole_match.start())
+    }
+
+    fn start_end(&self) -> (usize, usize) {
+        let whole_match = self.whole_match_cloned();
+        let length = whole_match.as_str().len();
+        let start = self.start + whole_match.start();
+        (start, start + length)
     }
 }
 
@@ -67,22 +88,30 @@ impl<'de, 'r: 'de, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, '
 
     fn deserialize_struct<V>(
         self,
-        _name: &'static str,
-        _fields: &'static [&'static str],
+        name: &'static str,
+        fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        self.deserialize_map(visitor)
+        if name == SPANNED_NAME && fields == [SPANNED_BEGIN, SPANNED_END, SPANNED_VALUE] {
+            let (start, end) = self.start_end();
+            visitor.visit_map(SpannedDeserializer::new(start, end, self))
+        } else {
+            self.deserialize_map(visitor)
+        }
     }
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        let deserializer =
-            SingleCaptureMapAccess::from_regex_tree_and_captures(self.regex_tree, self.capture);
+        let deserializer = SingleCaptureMapAccess::from_regex_tree_and_captures(
+            self.regex_tree,
+            self.capture,
+            self.start,
+        );
         visitor.visit_map(deserializer)
     }
 
@@ -109,8 +138,11 @@ impl<'de, 'r: 'de, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, '
     where
         V: de::Visitor<'de>,
     {
-        let seq_access =
-            SingleCaptureSeqAccess::from_regex_tree_and_captures(self.regex_tree, self.capture);
+        let seq_access = SingleCaptureSeqAccess::from_regex_tree_and_captures(
+            self.regex_tree,
+            self.capture,
+            self.start,
+        );
         visitor.visit_seq(seq_access)
     }
 
@@ -293,12 +325,16 @@ pub struct SingleCaptureMapAccess<'r, 'c, 't> {
     named_captures: Zip<CaptureNames<'r>, SubCaptureMatches<'c, 't>>,
     /// Stores the last returned key with its associated value
     last_key_value: Option<(&'r str, Match<'t>)>,
+    /// Byte offset of the start of the string `named_captures` is over within the originally parsed
+    /// string
+    start: usize,
 }
 
 impl<'r, 'c, 't> SingleCaptureMapAccess<'r, 'c, 't> {
     pub fn from_regex_tree_and_captures(
         regex_tree: &'r RegexTree,
         captures: SubCaptureMatches<'c, 't>,
+        start: usize,
     ) -> Self {
         let names = regex_tree.names();
         let named_captures = names.zip(captures);
@@ -306,6 +342,7 @@ impl<'r, 'c, 't> SingleCaptureMapAccess<'r, 'c, 't> {
             regex_tree,
             named_captures,
             last_key_value: None,
+            start,
         }
     }
 
@@ -347,11 +384,15 @@ impl<'de, 'r: 'de, 'c> MapAccess<'de> for SingleCaptureMapAccess<'r, 'c, 'de> {
             .last()
             .expect("invalid calling order; cannot get next value if there was no next key");
         match self.regex_tree.child(key) {
-            Some(regex_tree) => seed.deserialize(StrDeserializer::from_regex_tree_and_str(
+            Some(regex_tree) => seed.deserialize(StrDeserializer::from_regex_tree_and_offset_str(
                 regex_tree,
                 value.as_str(),
+                self.start + value.start(),
             )),
-            None => seed.deserialize(JustStrDeserializer::from_string(value.as_str())),
+            None => seed.deserialize(JustStrDeserializer::from_match(
+                value,
+                self.start + value.start(),
+            )),
         }
     }
 }
@@ -359,18 +400,23 @@ impl<'de, 'r: 'de, 'c> MapAccess<'de> for SingleCaptureMapAccess<'r, 'c, 'de> {
 pub struct SingleCaptureSeqAccess<'r, 'c, 't> {
     regex_tree: &'r RegexTree,
     named_captures: Zip<CaptureNames<'r>, SubCaptureMatches<'c, 't>>,
+    /// Byte offset of the start of the string `named_captures` is over within the originally parsed
+    /// string
+    start: usize,
 }
 
 impl<'r, 'c, 't> SingleCaptureSeqAccess<'r, 'c, 't> {
     pub fn from_regex_tree_and_captures(
         regex_tree: &'r RegexTree,
         captures: SubCaptureMatches<'c, 't>,
+        start: usize,
     ) -> Self {
         let names = regex_tree.names();
         let named_captures = names.zip(captures);
         Self {
             regex_tree,
             named_captures,
+            start,
         }
     }
 
@@ -392,13 +438,17 @@ impl<'de, 'r: 'de, 'c> SeqAccess<'de> for SingleCaptureSeqAccess<'r, 'c, 'de> {
             .map(|(key, value)| (key.and_then(|key| self.regex_tree.child(key)), value));
         match next {
             Some((Some(regex_tree), value)) => seed
-                .deserialize(StrDeserializer::from_regex_tree_and_str(
+                .deserialize(StrDeserializer::from_regex_tree_and_offset_str(
                     regex_tree,
                     value.as_str(),
+                    self.start + value.start(),
                 ))
                 .map(Some),
             Some((None, value)) => seed
-                .deserialize(JustStrDeserializer::from_string(value.as_str()))
+                .deserialize(JustStrDeserializer::from_match(
+                    value,
+                    self.start + value.start(),
+                ))
                 .map(Some),
             None => Ok(None),
         }
