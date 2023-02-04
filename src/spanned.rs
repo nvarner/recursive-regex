@@ -115,11 +115,9 @@ where
             Self::None => None,
         };
 
-        let out = key
-            .map(BorrowedStrDeserializer::new)
+        key.map(BorrowedStrDeserializer::new)
             .map(|key_de| seed.deserialize(key_de))
-            .transpose();
-        out
+            .transpose()
     }
 
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
