@@ -29,6 +29,18 @@ impl<T> Spanned<T> {
     pub fn new_raw(value: T, begin: usize, end: usize) -> Self {
         Self { begin, end, value }
     }
+
+    pub fn value(&self) -> &T {
+        &self.value
+    }
+
+    pub fn begin(&self) -> usize {
+        self.begin
+    }
+
+    pub fn end(&self) -> usize {
+        self.end
+    }
 }
 
 impl<'de, T: de::Deserialize<'de>> de::Deserialize<'de> for Spanned<T> {
