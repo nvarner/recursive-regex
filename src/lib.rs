@@ -30,10 +30,13 @@ pub use crate::string::StrDeserializer;
 /// let deserialized: Vec<u32> = from_regex_tree_and_str(&regex_tree, &text).unwrap();
 /// assert_eq!(deserialized, vec![1, 2, 456]);
 /// ```
-pub fn from_regex_tree_and_str<'t, 'r: 't, T: Deserialize<'t>>(
+pub fn from_regex_tree_and_str<'t, 'r, T>(
     regex_tree: &'r RegexTree,
     text: &'t str,
-) -> Result<T, Error> {
+) -> Result<T, Error>
+where
+    T: Deserialize<'t>,
+{
     let deserializer = StrDeserializer::from_regex_tree_and_str(regex_tree, text);
     T::deserialize(deserializer)
 }

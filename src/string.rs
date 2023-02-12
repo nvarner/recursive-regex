@@ -42,7 +42,7 @@ impl<'r, 't> StrDeserializer<'r, 't> {
     }
 }
 
-impl<'de, 'r: 'de> de::Deserializer<'de> for StrDeserializer<'r, 'de> {
+impl<'de, 'r> de::Deserializer<'de> for StrDeserializer<'r, 'de> {
     type Error = Error;
 
     fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>

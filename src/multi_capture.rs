@@ -27,7 +27,7 @@ impl<'r, 't> MultiCaptureSeqAccess<'r, 't> {
     }
 }
 
-impl<'de, 'r: 'de> SeqAccess<'de> for MultiCaptureSeqAccess<'r, 'de> {
+impl<'de, 'r> SeqAccess<'de> for MultiCaptureSeqAccess<'r, 'de> {
     type Error = Error;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>

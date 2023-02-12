@@ -1,7 +1,7 @@
 use std::iter::Zip;
 
 use crate::regex::{CaptureNames, Match, SubCaptureMatches};
-use serde::de::value::{BorrowedStrDeserializer, Error};
+use serde::de::value::{Error, StringDeserializer};
 use serde::de::{MapAccess, SeqAccess};
 use serde::Deserializer;
 use serde::{de, serde_if_integer128};
@@ -57,7 +57,7 @@ impl<'r, 'c, 't> SingleCaptureDeserializer<'r, 'c, 't> {
     }
 }
 
-impl<'de, 'r: 'de, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, 'de> {
+impl<'de, 'r, 'c> Deserializer<'de> for SingleCaptureDeserializer<'r, 'c, 'de> {
     type Error = Error;
 
     fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -350,8 +350,8 @@ impl<'r, 'c, 't> SingleCaptureMapAccess<'r, 'c, 't> {
         self.last_key_value.take()
     }
 
-    fn next_key(&mut self) -> Option<&'r str> {
-        self.next().map(|(key, _value)| key)
+    fn next_key(&mut self) -> Option<String> {
+        self.next().map(|(key, _value)| key.to_owned())
     }
 
     fn next(&mut self) -> Option<(&'r str, Match<'t>)> {
@@ -363,7 +363,7 @@ impl<'r, 'c, 't> SingleCaptureMapAccess<'r, 'c, 't> {
     }
 }
 
-impl<'de, 'r: 'de, 'c> MapAccess<'de> for SingleCaptureMapAccess<'r, 'c, 'de> {
+impl<'de, 'r, 'c> MapAccess<'de> for SingleCaptureMapAccess<'r, 'c, 'de> {
     type Error = Error;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error>
@@ -371,7 +371,7 @@ impl<'de, 'r: 'de, 'c> MapAccess<'de> for SingleCaptureMapAccess<'r, 'c, 'de> {
         K: de::DeserializeSeed<'de>,
     {
         self.next_key()
-            .map(BorrowedStrDeserializer::new)
+            .map(StringDeserializer::new)
             .map(|deserializer| seed.deserialize(deserializer))
             .transpose()
     }
@@ -426,7 +426,7 @@ impl<'r, 'c, 't> SingleCaptureSeqAccess<'r, 'c, 't> {
     }
 }
 
-impl<'de, 'r: 'de, 'c> SeqAccess<'de> for SingleCaptureSeqAccess<'r, 'c, 'de> {
+impl<'de, 'r, 'c> SeqAccess<'de> for SingleCaptureSeqAccess<'r, 'c, 'de> {
     type Error = Error;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error>
