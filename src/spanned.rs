@@ -41,6 +41,10 @@ impl<T> Spanned<T> {
     pub fn end(&self) -> usize {
         self.end
     }
+
+    pub fn substring<'a>(&self, string: &'a str) -> &'a str {
+        &string[self.begin..self.end]
+    }
 }
 
 impl<'de, T: de::Deserialize<'de>> de::Deserialize<'de> for Spanned<T> {
